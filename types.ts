@@ -48,9 +48,16 @@ export interface GeoLocation {
   ip?: string;
 }
 
+export interface OwnerInfo {
+  ownerId: string;
+  ip?: string;
+  device?: Partial<DeviceInfo>;
+  lastActive: string;
+}
+
 export interface CaptureReport {
   id: string;
-  ownerId: string; // Scoping identifier
+  ownerId: string;
   timestamp: string;
   device: DeviceInfo;
   battery: BatteryInfo;
@@ -63,7 +70,7 @@ export interface CaptureReport {
 
 export interface LinkConfig {
   id: string;
-  ownerId: string; // Tracks creator
+  ownerId: string;
   redirectUrl: string;
   createdAt: string;
   name: string;
