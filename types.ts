@@ -11,7 +11,6 @@ export interface DeviceInfo {
   ram: number;
   timezoneOffset: number;
   timezoneName: string;
-  // New metrics
   devicePixelRatio: number;
   colorDepth: number;
   maxTouchPoints: number;
@@ -51,6 +50,7 @@ export interface GeoLocation {
 
 export interface CaptureReport {
   id: string;
+  ownerId: string; // Scoping identifier
   timestamp: string;
   device: DeviceInfo;
   battery: BatteryInfo;
@@ -63,6 +63,7 @@ export interface CaptureReport {
 
 export interface LinkConfig {
   id: string;
+  ownerId: string; // Tracks creator
   redirectUrl: string;
   createdAt: string;
   name: string;
