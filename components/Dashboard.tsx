@@ -96,6 +96,11 @@ const Dashboard: React.FC = () => {
     uniqueIps: new Set(reports.map(r => r.location.ip)).size
   }), [reports, links]);
 
+  const openReport = (e: React.MouseEvent, report: CaptureReport) => {
+    e.stopPropagation();
+    setSelectedReport(report);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 animate-pop">
       {/* Top Navigation & Status */}
@@ -250,7 +255,7 @@ const Dashboard: React.FC = () => {
                       <div 
                         key={idx} 
                         className="p-6 md:p-8 hover:bg-brand-accent/5 transition-all cursor-pointer group border-l-[12px] border-transparent hover:border-brand-accent" 
-                        onClick={() => setSelectedReport(report)}
+                        onClick={(e) => openReport(e, report)}
                       >
                         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                           <div className="flex items-center gap-6">
@@ -280,7 +285,7 @@ const Dashboard: React.FC = () => {
                                   <MapPin size={12} className="text-brand-accent" /> {report.location.city || 'Scanning...'}
                                 </span>
                                 <span className="text-xs font-bold flex items-center gap-1.5">
-                                  <Battery size={12} /> {Math.round(report.battery.level * 100)}%
+                                  <Battery size={12} /> {Math.round((report.battery?.level || 1) * 100)}%
                                 </span>
                                 <span className="text-xs font-bold flex items-center gap-1.5">
                                   <Cpu size={12} /> {report.device.browser}
@@ -292,7 +297,10 @@ const Dashboard: React.FC = () => {
                             <span className="text-[10px] font-black text-ink/30 uppercase tracking-widest bg-paper px-2 py-1 border border-ink/5">
                               {new Date(report.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
-                            <button className="w-full md:w-auto bg-white hover:bg-ink hover:text-white border-3 border-ink px-5 py-2 font-black uppercase italic text-[10px] transition-all group-hover:shadow-comic-sm">
+                            <button 
+                              onClick={(e) => openReport(e, report)}
+                              className="w-full md:w-auto bg-white hover:bg-ink hover:text-white border-3 border-ink px-5 py-2 font-black uppercase italic text-[10px] transition-all group-hover:shadow-comic-sm"
+                            >
                               Full Report
                             </button>
                           </div>

